@@ -94,3 +94,8 @@ class FDI_Annotator:
             "48": {"quadrant": 4, "ID": "48", "type": "Molar", "name": "Lower Right Third Molar (Wisdom Tooth)"}
         }
 
+
+if __name__ == "__main__":
+    annot = FDI_Annotator()
+    for k in annot.inverse.keys():
+        print(k)
