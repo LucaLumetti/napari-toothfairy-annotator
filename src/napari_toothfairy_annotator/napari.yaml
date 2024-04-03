@@ -15,7 +15,7 @@ contributions:
     - id: napari-toothfairy-annotator.write_single_image
       python_name: napari_toothfairy_annotator._writer:write_single_image
       title: Save image data with ToothFairy Annotator
-    - id: napari-toothfairy-annotator.explorer
+    - id: napari-toothfairy-annotator.annotator
       python_name: napari_toothfairy_annotator._widget:FolderBrowser
       title: Annotator
   readers:
@@ -30,5 +30,5 @@ contributions:
       layer_types: ['image']
       filename_extensions: ['.npy']
   widgets:
-    - command: napari-toothfairy-annotator.explorer
-      display_name: File Explorer
+    - command: napari-toothfairy-annotator.annotator
+      display_name: Annotator

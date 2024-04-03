@@ -97,5 +97,5 @@ class FDI_Annotator:
 
 if __name__ == "__main__":
     annot = FDI_Annotator()
-    for k in annot.inverse.keys():
-        print(k)
+    for k, name in annot.fdi_notation.items():
+        print(int(k), name['name'])

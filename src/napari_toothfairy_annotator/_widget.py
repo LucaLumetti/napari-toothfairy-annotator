@@ -28,7 +28,7 @@ from qtpy.QtCore import  (
     QSortFilterProxyModel,
     Qt,
 )
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QColor,
     QPainter,
     QIcon,
@@ -64,8 +64,7 @@ class WidgetAnnotator(QWidget):
 
         self.load_associated_volume()
 
-        self.viewer.layers.move_multiple([1])
-
+        self.viewer.layers.move_multiple([0,2,1])
 
         layout = QVBoxLayout()
 
@@ -84,13 +83,34 @@ class WidgetAnnotator(QWidget):
         self.associate_button.clicked.connect(self.associate_ids)
         layout.addWidget(self.associate_button)
 
-        self.save_button = QPushButton("Save")
-        self.save_button.clicked.connect(self.save)
-        layout.addWidget(self.save_button)
+        self.reload_button = QPushButton("Reload")
+        self.reload_button.clicked.connect(self.reload)
+        layout.addWidget(self.reload_button)
 
         self.setLayout(layout)
-        self.update_lists()
         self.load_associations()
+        self.update_lists()
+
+
+    def reload(self,):
+        source = self.get_source()
+        annotation_npy_path = os.path.join(source, 'annotation.npy')
+
+        if not os.path.isfile(annotation_npy_path):
+            print('path not found on reload')
+            return
+
+        self.load_associations()
+        self.viewer.layers.remove('annotation')
+        annotation = np.load(annotation_npy_path)
+
+        keys = self.associations.keys()
+        print(keys)
+        for key in keys:
+            mask = annotation == int(key)
+            annotation[mask] = 0
+
+        self.viewer.add_labels(annotation, name='annotation', visible=True)
 
 
     def load_associated_volume(self,):
@@ -114,6 +134,7 @@ class WidgetAnnotator(QWidget):
                 self.viewer.layers['annotation'].data[mask] = 0
                 self.viewer.layers['associated'].data[mask] = int(fdi_id)
         self.viewer.layers['annotation'].refresh()
+        self.viewer.layers['associated'].refresh()
         self.update_lists()
         self.save()
 
@@ -151,10 +172,12 @@ class WidgetAnnotator(QWidget):
 
         with open(association_file) as f:
             print('Load associations.json')
-            self.associations = json.load(f)
+            str_id_associations = json.load(f)
+            self.associations = {}
+            for k, v in str_id_associations.items():
+                self.associations[int(k)] = v
 
         for left_id, right_id in self.associations.items():
-            print(f'{left_id=}, {right_id=}')
             mask = self.viewer.layers['annotation'].data == int(left_id)
             self.viewer.layers['annotation'].data[mask] = 0
         self.viewer.layers['annotation'].refresh()
@@ -163,24 +186,28 @@ class WidgetAnnotator(QWidget):
     def update_lists(self):
         self.list1.clear()
         self.list2.clear()
-        print(self.associations)
 
         for id_data in self.get_fdi_ids():
             item = ColorWidgetItem(id_data['name'], QColor("white"))
             self.list1.addItem(item)
 
+        already_annotated = set(self.associations.keys())
+        print(f'already_annotated: {already_annotated}')
+
         for id_data in self.get_available_ids():
             s = f'{id_data}'
-            if int(id_data) in self.associations.keys():
+            if int(id_data) in already_annotated:
                 assoc_id = self.associations[int(id_data)]
-                s += f' ➤ {self.fdi_annotator.fdi_notation[assoc_id]["name"]}'
+                s += f' > {self.fdi_annotator.fdi_notation[assoc_id]["name"]}'
             item = ColorWidgetItem(s, QColor("red"))
             self.list2.addItem(item)
 
     def get_available_ids(self,):
         if self._available_ids is None:
             data = self.viewer.layers['annotation'].data
-            self._available_ids = np.unique(data)
+            self._available_ids = np.unique(data).tolist()
+            self._available_ids += self.associations.keys()
+            self._available_ids = list(set(self._available_ids))
         return self._available_ids
 
     def get_fdi_ids(self,):
@@ -303,7 +330,6 @@ class FolderBrowser(QWidget):
             layers_to_remove = self.viewer.layers.copy()
             for layer in layers_to_remove:
                 self.viewer.layers.remove(layer)
-
 
             print(f'Layers: {len(self.viewer.layers)}')
 
