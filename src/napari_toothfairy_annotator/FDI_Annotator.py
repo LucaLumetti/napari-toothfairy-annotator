@@ -58,7 +58,9 @@ class FDI_Annotator:
             "05": {"quadrant": 0, "ID": "05", "type": "Left Maxillary Sinus", "name": "Left Maxillary Sinus"},
             "06": {"quadrant": 0, "ID": "06", "type": "Right Maxillary Sinus", "name": "Right Maxillary Sinus"},
             "07": {"quadrant": 0, "ID": "07", "type": "Pharynx", "name": "Pharynx"},
-
+            "08": {"quadrant": 0, "ID": "08", "type": "Bridge", "name": "Bridge"},
+            "09": {"quadrant": 0, "ID": "09", "type": "Crown", "name": "Crown"},
+            "10": {"quadrant": 0, "ID": "10", "type": "Implant", "name": "Implant"},
             "11": {"quadrant": 1, "ID": "11", "type": "Incisor", "name": "Upper Right Central Incisor"},
             "12": {"quadrant": 1, "ID": "12", "type": "Incisor", "name": "Upper Right Lateral Incisor"},
             "13": {"quadrant": 1, "ID": "13", "type": "Canine", "name": "Upper Right Canine"},

@@ -68,12 +68,16 @@ class WidgetAnnotator(QWidget):
 
         layout = QVBoxLayout()
 
+        self.list1_label = QLabel('Nominal IDs:')
         self.list1 = QListWidget()
         # self.list1.setSortingEnabled(True)
+        layout.addWidget(self.list1_label)
         layout.addWidget(self.list1)
 
+        self.list2_label = QLabel('Numerical IDs:')
         self.list2 = QListWidget()
         self.list2.setSortingEnabled(True)
+        layout.addWidget(self.list2_label)
         layout.addWidget(self.list2)
         self.list2.setSelectionMode(
             QAbstractItemView.ExtendedSelection
@@ -82,6 +86,10 @@ class WidgetAnnotator(QWidget):
         self.associate_button = QPushButton("Associate IDs")
         self.associate_button.clicked.connect(self.associate_ids)
         layout.addWidget(self.associate_button)
+
+        self.reset_assoc_button = QPushButton("Reset Association")
+        self.reset_assoc_button.clicked.connect(self.reset_assoc)
+        layout.addWidget(self.reset_assoc_button)
 
         self.reload_button = QPushButton("Reload")
         self.reload_button.clicked.connect(self.reload)
@@ -138,6 +146,29 @@ class WidgetAnnotator(QWidget):
         self.update_lists()
         self.save()
 
+    def reset_assoc(self,):
+        selected_items_list2 = self.list2.selectedItems()
+
+        for item2 in selected_items_list2:
+            item2 = item2.text()
+
+            if ' > ' not in item2:
+                continue
+
+            print(f"selected: {item2}")
+            
+            id = item2.split(' > ')[0]
+            id = int(id)
+            assoc_id = self.associations[id]
+
+            print(f"removing {id} > {assoc_id}")
+
+            del self.associations[id]
+
+        self.update_lists()
+        self.save()
+        self.reload()
+
     def get_source(self,):
         source = self.viewer.layers['annotation'].source.path
         if source is None:
@@ -188,7 +219,7 @@ class WidgetAnnotator(QWidget):
         self.list2.clear()
 
         for id_data in self.get_fdi_ids():
-            item = ColorWidgetItem(id_data['name'], QColor("white"))
+            item = id_data['name']
             self.list1.addItem(item)
 
         already_annotated = set(self.associations.keys())
@@ -199,7 +230,7 @@ class WidgetAnnotator(QWidget):
             if int(id_data) in already_annotated:
                 assoc_id = self.associations[int(id_data)]
                 s += f' > {self.fdi_annotator.fdi_notation[assoc_id]["name"]}'
-            item = ColorWidgetItem(s, QColor("red"))
+            item = s
             self.list2.addItem(item)
 
     def get_available_ids(self,):
