@@ -1,7 +1,10 @@
+from functools import partial
 import os
 import json
 import numpy as np
 from pathlib import Path
+from qtpy.QtWidgets import QLabel, QSizePolicy
+import warnings
 # from napari_plugin_engine import napari_hook_implementation
 
 from qtpy.QtWidgets import (
@@ -95,6 +98,14 @@ class WidgetAnnotator(QWidget):
         self.reload_button.clicked.connect(self.reload)
         layout.addWidget(self.reload_button)
 
+        self.tooltip = QLabel(self.viewer.window.qt_viewer.parent())
+        self.tooltip.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.tooltip.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.tooltip.setAlignment(Qt.AlignCenter)
+        self.tooltip.sizePolicy().setHorizontalPolicy(QSizePolicy.Minimum)
+        self.tooltip.setStyleSheet("color: black")
+        self.tooltip.show()
+
         self.setLayout(layout)
         self.load_associations()
         self.update_lists()
@@ -120,6 +131,36 @@ class WidgetAnnotator(QWidget):
 
         self.viewer.add_labels(annotation, name='annotation', visible=True)
 
+    def add_tooltip(self,):
+        if 'associated' not in self.viewer.layers:
+            return
+
+        self.viewer.layers['associated'].mouse_move_callbacks.append(self.show_label_on_mouse_move)
+
+
+    def show_label_on_mouse_move(self, layer, event):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            label_pos = self.viewer.window.qt_viewer.cursor().pos()
+        self.tooltip.move(label_pos.x() + 20, label_pos.y() + 20)
+        mouse_pos = np.round(event.position).astype(int)
+        val = layer.get_value(
+            position=mouse_pos,
+            view_direction=self.viewer.cursor._view_direction,
+            dims_displayed=list(self.viewer.dims.displayed),
+            world=True,
+        )
+
+        if val is None:
+            self.tooltip.setText('')
+            self.tooltip.adjustSize()
+            return
+        label_name = self.fdi_annotator.fdi_notation[f'{val:02d}']['name']
+        if label_name is None:
+            label_name = "Error"
+        self.tooltip.setText(f'{label_name} (ID: {val})')
+        self.tooltip.adjustSize()
+
 
     def load_associated_volume(self,):
         source = self.get_source()
@@ -129,6 +170,7 @@ class WidgetAnnotator(QWidget):
         else:
             self.associated_volume = np.zeros_like(self.viewer.layers['annotation'].data)
         self.viewer.add_labels(self.associated_volume, name='associated', visible=False)
+        self.add_tooltip()
 
     def associate_ids(self):
         selected_items_list1 = self.list1.selectedItems()
@@ -211,7 +253,9 @@ class WidgetAnnotator(QWidget):
         for left_id, right_id in self.associations.items():
             mask = self.viewer.layers['annotation'].data == int(left_id)
             self.viewer.layers['annotation'].data[mask] = 0
+            self.viewer.layers['associated'].data[mask] = int(right_id)
         self.viewer.layers['annotation'].refresh()
+        self.viewer.layers['associated'].refresh()
 
 
     def update_lists(self):
@@ -223,7 +267,6 @@ class WidgetAnnotator(QWidget):
             self.list1.addItem(item)
 
         already_annotated = set(self.associations.keys())
-        print(f'already_annotated: {already_annotated}')
 
         for id_data in self.get_available_ids():
             s = f'{id_data}'
@@ -249,6 +292,25 @@ class WidgetAnnotator(QWidget):
 
 
 class DirectoryFriendlyFilterProxyModel(QSortFilterProxyModel):
+    def lessThan(self, left, right):
+        # Implement your custom sorting logic here
+        left_data = self.sourceModel().data(left)
+        right_data = self.sourceModel().data(right)
+        # For example, let's sort integers in descending order
+        try:
+            left_int = int(left_data[1:])
+            right_int = int(right_data[1:])
+            left_char = left_data[0]
+            right_char = right_data[0]
+            if left_char > right_char:
+                return True
+            elif left_char < right_char:
+                return False
+            else:
+                return left_int > right_int
+        except Exception as e:
+            return False
+
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
         """Accepts directories and files that pass the base class's filter
         
@@ -258,8 +320,8 @@ class DirectoryFriendlyFilterProxyModel(QSortFilterProxyModel):
         model = self.sourceModel()
         index = model.index(source_row, 0, source_parent)
 
-        if model.isDir(index):
-            return True
+        # if model.isDir(index):
+        #     return True
 
         return super().filterAcceptsRow(source_row, source_parent)
 
@@ -322,6 +384,7 @@ class FolderBrowser(QWidget):
         self.layout().addWidget(search_widget)
 
         self.tree_view = QTreeView()
+        self.tree_view.setSortingEnabled(True)
         self.tree_view.setModel(self.proxy_model)
         self.tree_view.setRootIndex(
             self.proxy_model.mapFromSource(
