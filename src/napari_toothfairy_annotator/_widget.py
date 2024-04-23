@@ -47,15 +47,17 @@ if TYPE_CHECKING:
 
 from napari_toothfairy_annotator.FDI_Annotator import FDI_Annotator
 
-class ColorWidgetItem(QListWidgetItem):
-    def __init__(self, text, color):
+class CustomSortWidgetItem(QListWidgetItem):
+    def __init__(self, text, nominal_id):
         super().__init__(text)
-        self.color = color
+        self.nominal_id = nominal_id
 
-    def paint(self, painter):
-        painter.fillRect(self.rect().adjusted(0, 0, -50, 0), self.color)
-        super().paint(painter)
+    def __lt__(self, other):
+        return self.nominal_id < other.nominal_id
 
+    # def paint(self, painter):
+    #     painter.fillRect(self.rect().adjusted(0, 0, -50, 0), self.color)
+    #     super().paint(painter)
 
 class WidgetAnnotator(QWidget):
     def __init__(self, napari_viewer):
@@ -158,7 +160,7 @@ class WidgetAnnotator(QWidget):
         label_name = self.fdi_annotator.fdi_notation[f'{val:02d}']['name']
         if label_name is None:
             label_name = "Error"
-        self.tooltip.setText(f'{label_name} (ID: {val})')
+        self.tooltip.setText(f'{label_name} (Nominal ID: {val})')
         self.tooltip.adjustSize()
 
 
@@ -264,7 +266,8 @@ class WidgetAnnotator(QWidget):
 
         for id_data in self.get_fdi_ids():
             item = id_data['name']
-            self.list1.addItem(item)
+            id = id_data['ID']
+            self.list1.addItem(f'{id} - {item}')
 
         already_annotated = set(self.associations.keys())
 
@@ -274,7 +277,7 @@ class WidgetAnnotator(QWidget):
                 assoc_id = self.associations[int(id_data)]
                 s += f' > {self.fdi_annotator.fdi_notation[assoc_id]["name"]}'
             item = s
-            self.list2.addItem(item)
+            self.list2.addItem(CustomSortWidgetItem(item, assoc_id))
 
     def get_available_ids(self,):
         if self._available_ids is None:
