@@ -112,6 +112,14 @@ class WidgetAnnotator(QWidget):
         self.load_associations()
         self.update_lists()
 
+    def delete(self,):
+        if self.tooltip is not None:
+            print(f'Deleting tooltip')
+            self.tooltip.hide()
+            self.tooltip.setParent(None)
+            self.tooltip.deleteLater()
+            self.tooltip = None
+
 
     def reload(self,):
         source = self.get_source()
@@ -165,6 +173,7 @@ class WidgetAnnotator(QWidget):
 
 
     def load_associated_volume(self,):
+        print(f'Called load_associated_volume')
         source = self.get_source()
         associated_volume_path = os.path.join(source, 'associated.npy')
         if os.path.isfile(associated_volume_path):
@@ -180,7 +189,9 @@ class WidgetAnnotator(QWidget):
 
         for item1 in selected_items_list1:
             for item2 in selected_items_list2:
-                fdi_id = self.fdi_annotator.inverse[item1.text()]['ID']
+                elem_name = item1.text().split(' - ')[-1]
+                fdi_id = self.fdi_annotator.inverse[elem_name]['ID']
+                print(f'associating {elem_name} (id: {fdi_id})')
                 self.associations[int(item2.text())] = fdi_id
                 mask = self.viewer.layers['annotation'].data == int(item2.text())
                 self.viewer.layers['annotation'].data[mask] = 0
@@ -192,6 +203,9 @@ class WidgetAnnotator(QWidget):
 
     def reset_assoc(self,):
         selected_items_list2 = self.list2.selectedItems()
+
+        if len(selected_items_list2) == 0:
+            return
 
         for item2 in selected_items_list2:
             item2 = item2.text()
@@ -241,8 +255,12 @@ class WidgetAnnotator(QWidget):
     def load_associations(self,):
         source = self.get_source()
         association_file = os.path.join(source, 'associations.json')
+        annotation_file = os.path.join(source, 'annotation.npy')
 
         if not os.path.isfile(association_file):
+            return
+
+        if not os.path.isfile(annotation_file):
             return
 
         with open(association_file) as f:
@@ -252,8 +270,10 @@ class WidgetAnnotator(QWidget):
             for k, v in str_id_associations.items():
                 self.associations[int(k)] = v
 
+        annotation = np.load(annotation_file)
+        self.viewer.layers['associated'].data = np.zeros_like(annotation)
         for left_id, right_id in self.associations.items():
-            mask = self.viewer.layers['annotation'].data == int(left_id)
+            mask = annotation == int(left_id)
             self.viewer.layers['annotation'].data[mask] = 0
             self.viewer.layers['associated'].data[mask] = int(right_id)
         self.viewer.layers['annotation'].refresh()
@@ -422,6 +442,7 @@ class FolderBrowser(QWidget):
         if self.file_system_model.isDir(source_index):
             if self.annotator_widget is not None:
                 self.layout().removeWidget(self.annotator_widget)
+                self.annotator_widget.delete()
                 self.annotator_widget = None
 
             layers_to_remove = self.viewer.layers.copy()
