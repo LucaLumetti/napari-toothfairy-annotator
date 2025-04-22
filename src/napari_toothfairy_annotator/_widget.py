@@ -30,6 +30,7 @@ from qtpy.QtCore import  (
     QRegExp,
     QSortFilterProxyModel,
     Qt,
+    QTimer,
 )
 from qtpy.QtGui import (
     QColor,
@@ -40,6 +41,7 @@ from qtpy.QtGui import (
 from napari.viewer import Viewer
 from magicgui.widgets import FileEdit
 from magicgui.types import FileDialogMode
+from napari.utils import notifications
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -111,6 +113,18 @@ class WidgetAnnotator(QWidget):
         self.setLayout(layout)
         self.load_associations()
         self.update_lists()
+        self.viewer.layers['annotation'].events.paint.connect(self.paint_callback)
+
+    def paint_callback(self, event):
+        print("paint callback")
+        # start a qt timer, if another paint event is called, reset the timer
+        if hasattr(self, 'paint_timer'):
+            self.paint_timer.stop()
+        self.paint_timer = QTimer(self)
+        self.paint_timer.setSingleShot(True)
+        self.paint_timer.setInterval(5000)
+        self.paint_timer.timeout.connect(self.save_annotations)
+        self.paint_timer.start()
 
     def delete(self,):
         if self.tooltip is not None:
@@ -199,7 +213,7 @@ class WidgetAnnotator(QWidget):
         self.viewer.layers['annotation'].refresh()
         self.viewer.layers['associated'].refresh()
         self.update_lists()
-        self.save()
+        self.save_associations()
 
     def reset_assoc(self,):
         selected_items_list2 = self.list2.selectedItems()
@@ -224,7 +238,7 @@ class WidgetAnnotator(QWidget):
             del self.associations[id]
 
         self.update_lists()
-        self.save()
+        self.save_associations()
         self.reload()
 
     def get_source(self,):
@@ -240,8 +254,14 @@ class WidgetAnnotator(QWidget):
 
         return source
 
+    def save_annotations(self,):
+        data = self.viewer.layers['annotation'].data
+        source = self.get_source()
+        save_path = os.path.join(source, 'annotation.npy')
+        np.save(save_path, data)
+        notifications.show_info(f'Saved annotation to {save_path}')
 
-    def save(self,):
+    def save_associations(self,):
         data = self.viewer.layers['associated'].data
         source = self.get_source()
 
@@ -441,6 +461,11 @@ class FolderBrowser(QWidget):
 
         if self.file_system_model.isDir(source_index):
             if self.annotator_widget is not None:
+                self.annotator_widget.save_associations()
+                self.annotator_widget.save_annotations()
+                if hasattr(self.annotator_widget, 'paint_timer'):
+                    self.annotator_widget.paint_timer.stop()
+
                 self.layout().removeWidget(self.annotator_widget)
                 self.annotator_widget.delete()
                 self.annotator_widget = None
