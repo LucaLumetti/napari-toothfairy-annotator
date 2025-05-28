@@ -10,7 +10,10 @@ import warnings
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -18,6 +21,7 @@ from qtpy.QtWidgets import (
     QListWidgetItem,
     QMenu,
     QPushButton,
+    QSlider,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -49,6 +53,74 @@ if TYPE_CHECKING:
 
 from napari_toothfairy_annotator.FDI_Annotator import FDI_Annotator
 
+class SettingsDialog(QDialog):
+    def __init__(self, current_interval_ms=20000, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("ToothFairy Annotator Settings")
+        self.setModal(True)
+        self.resize(400, 250)
+        
+        layout = QVBoxLayout()
+        
+        # Create form layout for settings
+        form_layout = QFormLayout()
+        
+        # Saving delay timer setting
+        timer_layout = QVBoxLayout()
+        
+        self.timer_label = QLabel("Saving Delay: 20s")
+        self.timer_slider = QSlider(Qt.Horizontal)
+        self.timer_slider.setMinimum(5)  # 5 seconds
+        self.timer_slider.setMaximum(61)  # 60 seconds + 1 for "Never"
+        
+        # Set current value from the parameter
+        if current_interval_ms <= 0:
+            self.timer_slider.setValue(61)  # "Never"
+        else:
+            self.timer_slider.setValue(min(60, max(5, current_interval_ms // 1000)))
+        
+        self.timer_slider.setTickPosition(QSlider.TicksBelow)
+        self.timer_slider.setTickInterval(5)
+        
+        # Connect slider to update label
+        self.timer_slider.valueChanged.connect(self.update_timer_label)
+        
+        # Add some help text
+        help_label = QLabel("Set the delay before auto-saving annotations after painting.\nValues: 5-60 seconds, or 'Never' to disable auto-save.")
+        help_label.setWordWrap(True)
+        help_label.setStyleSheet("color: gray; font-size: 10px;")
+        
+        timer_layout.addWidget(self.timer_label)
+        timer_layout.addWidget(self.timer_slider)
+        timer_layout.addWidget(help_label)
+        
+        form_layout.addRow("Saving Delay Timer:", timer_layout)
+        
+        layout.addLayout(form_layout)
+        
+        # Add OK/Cancel buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+        
+        self.setLayout(layout)
+        
+        # Set initial label
+        self.update_timer_label(self.timer_slider.value())
+    
+    def update_timer_label(self, value):
+        if value > 60:
+            self.timer_label.setText("Saving Delay: Never")
+        else:
+            self.timer_label.setText(f"Saving Delay: {value}s")
+    
+    def get_interval_ms(self):
+        value = self.timer_slider.value()
+        if value > 60:
+            return -1  # Never save
+        return value * 1000  # Convert to milliseconds
+
 class CustomSortWidgetItem(QListWidgetItem):
     def __init__(self, text, nominal_id):
         super().__init__(text)
@@ -68,6 +140,7 @@ class WidgetAnnotator(QWidget):
         self.fdi_annotator = FDI_Annotator()
         self.associations = {0: "00"}
         self._available_ids = None
+        self.saving_delay_ms = 20000  # Default 20 seconds
 
         self.load_associated_volume()
 
@@ -102,6 +175,10 @@ class WidgetAnnotator(QWidget):
         self.reload_button.clicked.connect(self.reload)
         layout.addWidget(self.reload_button)
 
+        self.settings_button = QPushButton("Settings")
+        self.settings_button.clicked.connect(self.open_settings)
+        layout.addWidget(self.settings_button)
+
         self.tooltip = QLabel(self.viewer.window.qt_viewer.parent())
         self.tooltip.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.tooltip.setAttribute(Qt.WA_ShowWithoutActivating)
@@ -111,20 +188,66 @@ class WidgetAnnotator(QWidget):
         self.tooltip.show()
 
         self.setLayout(layout)
+        self.load_settings()  # Load settings from file
         self.load_associations()
         self.update_lists()
         self.viewer.layers['annotation'].events.paint.connect(self.paint_callback)
+
+    def load_settings(self):
+        """Load settings from configuration file"""
+        try:
+            source = self.get_source()
+            settings_file = os.path.join(source, 'plugin_settings.json')
+            if os.path.isfile(settings_file):
+                with open(settings_file, 'r') as f:
+                    settings = json.load(f)
+                    self.saving_delay_ms = settings.get('saving_delay_ms', 20000)
+                    print(f"Loaded settings: saving_delay_ms = {self.saving_delay_ms}")
+            else:
+                print("No settings file found, using default saving delay of 20s")
+        except Exception as e:
+            print(f"Could not load settings, using defaults: {e}")
+            self.saving_delay_ms = 20000
+
+    def save_settings(self):
+        """Save settings to configuration file"""
+        try:
+            source = self.get_source()
+            settings_file = os.path.join(source, 'plugin_settings.json')
+            settings = {
+                'saving_delay_ms': self.saving_delay_ms
+            }
+            with open(settings_file, 'w') as f:
+                json.dump(settings, f)
+            print(f"Settings saved to {settings_file}")
+        except Exception as e:
+            print(f"Could not save settings: {e}")
+
+    def open_settings(self):
+        """Open the settings dialog"""
+        dialog = SettingsDialog(self.saving_delay_ms, self)
+        if dialog.exec_() == QDialog.Accepted:
+            new_interval = dialog.get_interval_ms()
+            self.saving_delay_ms = new_interval
+            self.save_settings()  # Save settings to file
+            if new_interval > 0:
+                print(f"Saving delay updated to: {self.saving_delay_ms}ms ({self.saving_delay_ms/1000}s)")
+            else:
+                print("Auto-save disabled (set to Never)")
 
     def paint_callback(self, event):
         print("paint callback")
         # start a qt timer, if another paint event is called, reset the timer
         if hasattr(self, 'paint_timer'):
             self.paint_timer.stop()
-        self.paint_timer = QTimer(self)
-        self.paint_timer.setSingleShot(True)
-        self.paint_timer.setInterval(5000)
-        self.paint_timer.timeout.connect(self.save_annotations)
-        self.paint_timer.start()
+        
+        # Only start timer if saving is enabled (not set to "Never")
+        if self.saving_delay_ms > 0:
+            self.paint_timer = QTimer(self)
+            self.paint_timer.setSingleShot(True)
+            self.paint_timer.setInterval(self.saving_delay_ms)
+            self.paint_timer.timeout.connect(self.save_annotations)
+            self.paint_timer.start()
 
     def delete(self,):
         if self.tooltip is not None:
